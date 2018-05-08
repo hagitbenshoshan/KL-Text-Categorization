@@ -27,16 +27,23 @@ def get_idf(documents_tfs):
 
         return idf
 
-
 def build_document_vectors(documents_tfs):
         idf = get_idf(documents_tfs)
         weights = {}
-        for term in idf.keys():
-                weights[term] = {}
-                for doc in documents_tfs.keys():
-                        weights[term][doc] = idf[term] * documents_tfs[doc][term]
+        for doc in documents_tfs.keys():
+                weights[doc] = {}
+                for term in idf.keys():
+                        weights[doc][term] = idf[term] * documents_tfs[doc][term]
         return weights
 
+def similarity(doc_weights, cat_weights):
+        numerator = 0.0
+        for key in doc_weights.keys():
+                numerator += doc_weights[key] * cat_weights[key]
+        denomonator = math.sqrt(
+                        sum(dw^2 for dw in doc_weights.values()) +
+                        sum(dw^2 for dw in cat_weights.values()))
+        return numerator/denomonator
 
 def main():
         print(build_document_vectors(get_document_tf(sys.argv)))
