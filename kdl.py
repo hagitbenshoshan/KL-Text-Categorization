@@ -32,6 +32,7 @@ def get_document_tf(filenames):
 def calculate_vocab():
         return range(len(terms_to_cols))
 
+
 # P and Q must be iterators of the same length
 # sum(P) == sum(Q) == 1
 # no element in either P or Q is 0
