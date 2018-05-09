@@ -12,22 +12,10 @@ terms_to_cols = {}
 def get_document_tf(filenames):
         documents = {}
         for i, filename in enumerate(filenames):
-                ids_to_rows[filename] = i
                 f = open(filename).read()
                 documents[filename] = coll.Counter(word.lower()
                                                    for word in f.split())
-
-        vocab = sum(documents.values(), coll.Counter())
-
-        for j, word in enumerate(vocab):
-                terms_to_cols[word] = j
-
-        counts = np.zeros((len(ids_to_rows), len(terms_to_cols)))
-        for d in documents:
-                for t in documents[d]:
-                        counts[ids_to_rows[d]][terms_to_cols[t]] = documents[d][t]
-
-        return counts
+        return documents
 
 def calculate_vocab():
         return range(len(terms_to_cols))
@@ -106,15 +94,34 @@ def KDL_star(cat, doc, p_term_c_doc, p_term_c_cat, vocab, prob_empty):
                              [prob_empty(v, doc) for v in vocab])
         return KDL(cat, doc, p_term_c_doc, p_term_c_cat, vocab) / denom
 
+#takes dictionary {filenames: {(all)terms: counts}}
+def build_document_vector(documents_tfs):
+        for i, filename in enumerate(documents_tfs.keys()):
+                ids_to_rows[filename] = i
+
+        vocab = sum(documents_tfs.values(), coll.Counter())
+
+        for j, word in enumerate(vocab):
+                terms_to_cols[word] = j
+
+        counts = np.zeros((len(ids_to_rows), len(terms_to_cols)))
+        for d in documents_tfs:
+                for t in documents_tfs[d]:
+                        counts[ids_to_rows[d]][terms_to_cols[t]] = documents_tfs[d][t]
+        return counts
+
 def main():
-        docs = get_document_tf(sys.argv[1:])
+        docs = build_document_vector(get_document_tf(sys.argv[1:]))
         # TODO: obviously this can't stay this way
-        cats = get_document_tf(sys.argv[1:])
+        cats = build_document_vector(get_document_tf(sys.argv[1:]))
+        
+        # Here is a model for how to calculate the similarity:
         vocab = calculate_vocab()
         p_term_c_doc, p_term_c_cat, prob_empty = calculate_conditionals_back_off(docs, cats)
 
         # Need id's for categories -- currently the same
         for d, c in itertools.product(range(len(ids_to_rows)), range(len(ids_to_rows))):
+                # for each document to categorize take the category that minimizes KDL_star
                 print("Document: {}, Category: {}, Similarity: {}".format(d, c, KDL_star(c,d,p_term_c_doc,p_term_c_cat,vocab, prob_empty)))
 
 if __name__ == '__main__':
