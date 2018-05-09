@@ -7,6 +7,7 @@ doc_categories = {}
 category_docs = {}
 # category name -> category weight vectors
 catweights = {}
+catterms = set()
 
 
 def load_categories(doc_categories_fname):
@@ -61,6 +62,9 @@ def get_idf(documents_tfs):
 
     # Calculate the IDF per term:
     idf = {}
+    if len(num_docs_with_term.keys()) == 0:
+        print("No docs with term")
+
     for term in num_docs_with_term.keys():
         idf[term] = math.log(float(total_num_docs)
                              / num_docs_with_term[term])
@@ -68,19 +72,24 @@ def get_idf(documents_tfs):
     return idf
 
 
-def build_document_vectors(documents_tfs):
+def build_document_vectors(documents_tfs, testing):
     idf = get_idf(documents_tfs)
     print("Done calculating idfs")
     weights = {}
     numdocs = len(documents_tfs.keys())
     numdone = 0
     print("Generating tfidf weights")
+    if len(documents_tfs.keys()) == 0:
+        print("No documents processed")
     for doc in documents_tfs.keys():
         weights[doc] = defaultdict(float)
+        if len(idf.keys()) == 0:
+            print("No terms in idf vector")
         for term in idf.keys():
-            weight = idf[term] * documents_tfs[doc][term]
-            if weight != 0.0:
-                weights[doc][term] = weight
+            if not testing or term in catterms:
+                weight = idf[term] * documents_tfs[doc][term]
+                if weight != 0.0:
+                    weights[doc][term] = weight
         numdone += 1
         if numdone % (numdocs / 10) == 0:
             print("    {}{} done".format(numdone / numdocs * 100, '%'))
@@ -92,12 +101,19 @@ def build_category_vectors(weights):
     numcategories = len(category_docs.keys())
     numdone = 0
 
+    if len(category_docs.keys()) == 0:
+        print("No categories found")
     for category in category_docs.keys():
         cvs[category] = defaultdict(float)
+        if len(category_docs[category]) == 0:
+            print("No documents in category")
         for doc_id in category_docs[category]:
             if doc_id not in weights.keys():
                 continue
+            if len(weights[doc_id].keys()) == 0:
+                print("No terms in document")
             for term in weights[doc_id].keys():
+                catterms.add(term)
                 cvs[category][term] += weights[doc_id][term]
         numdone += 1
         if numdone % (numcategories / 10) == 0:
@@ -107,11 +123,15 @@ def build_category_vectors(weights):
 
 def similarity(doc_weights, cat_weights):
     numerator = 0.0
+    if len(doc_weights.keys()) == 0:
+        return 0
     for key in doc_weights.keys():
         numerator += doc_weights[key] * cat_weights[key]
-    denomonator = math.sqrt(sum(dw**2 for dw in doc_weights.values()) +
+    denominator = math.sqrt(sum(dw**2 for dw in doc_weights.values()) +
                             sum(dw**2 for dw in cat_weights.values()))
-    return numerator / denomonator
+    if denominator == 0:
+        return 0
+    return numerator / denominator
 
 
 def train():
@@ -127,13 +147,13 @@ def train():
     doc_fnames = ["rcv1/lyrl2004_tokens_train.dat"]
     traindocs = generate_freq_vectors(doc_fnames)
 
-    #subdocs = {k: v for k, v in list(traindocs.items())[:][:1000]}
-    #traindocs = subdocs
+#    subdocs = {k: v for k, v in list(traindocs.items())[:][:9000]}
+#    traindocs = subdocs
 
     print("Done reading in docs & calculating tf vectors")
     print("Read in {} document tf vectors".format(len(traindocs)))
 
-    docweights = build_document_vectors(traindocs)
+    docweights = build_document_vectors(traindocs, False)
     print("Done building document tfidf vectors")
     global catweights
     print("Building category vectors")
@@ -151,16 +171,20 @@ def test():
     doc_fnames = ["rcv1/lyrl2004_tokens_test_pt0.dat"]
 #    doc_fnames = ["rcv1/lyrl2004_tokens_train.dat"]
     testdocs = generate_freq_vectors(doc_fnames)
-    #subdocs = {k: v for k, v in list(testdocs.items())[:][:1000]}
-    #testdocs = subdocs
+#    subdocs = {k: v for k, v in list(testdocs.items())[:][:5000]}
+#    testdocs = subdocs
     print("Read in {} document tf vectors".format(len(testdocs)))
 
-    docweights = build_document_vectors(testdocs)
+    docweights = build_document_vectors(testdocs, True)
     print("Done building document tfidf vectors")
     print("Running categorization test on test corpus")
+    if len(docweights.keys()) == 0:
+        print("No documents processed")
     for doc_id in docweights.keys():
         maxcategory = ""
         maxsimilarity = 0
+        if len(catweights.keys()) == 0:
+            print("No categories processed")
         for category in catweights.keys():
             sim = similarity(docweights[doc_id], catweights[category])
             #print("Doc ID: {}, Cat: {}, Sim: {}".format(doc_id, category, sim))
