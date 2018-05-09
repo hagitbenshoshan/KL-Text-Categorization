@@ -1,128 +1,281 @@
 import itertools
 import math
-import sys
-import collections as coll
+from collections import Counter
 import numpy as np
 
-ids_to_rows = {}
+doc_ids_to_rows = {}
+rows_to_doc_ids = {}
+test_doc_ids_to_rows = {}
+test_rows_to_doc_ids = {}
+cats_to_rows = {}
+rows_to_cats = {}
 terms_to_cols = {}
+
+# document id -> category names
+doc_categories = {}
+# category name -> document ids
+category_docs = {}
+
+infty = 100000000
+
+class KDLData:
+    def __init__(self, vocab, p_term_c_doc, p_term_c_cat, prob_empty):
+        self.vocab = vocab
+        self.p_term_c_doc = p_term_c_doc
+        self.p_term_c_cat = p_term_c_cat
+        self.prob_empty = prob_empty
+
+
+def load_categories(doc_categories_fname):
+    doc_categories_f = open(doc_categories_fname)
+    for line in doc_categories_f:
+        line = line.split()
+        doc_id = int(line[1])
+        doc_category = line[0]
+        if doc_id not in doc_categories.keys():
+            doc_categories[doc_id] = set()
+            doc_categories[doc_id].add(doc_category)
+        else:
+            doc_categories[doc_id].add(doc_category)
+        if doc_category not in category_docs.keys():
+            category_docs[doc_category] = set()
+            category_docs[doc_category].add(doc_id)
+        else:
+            category_docs[doc_category].add(doc_id)
+    doc_categories_f.close()
+
+    for i, cat in enumerate(category_docs.keys()):
+        cats_to_rows[cat] = i
+        rows_to_cats[i] = cat
+
+
+def generate_freq_vectors(doc_fnames):
+    docs = {}
+    for doc_fname in doc_fnames:
+        doc_f = open(doc_fname)
+        doc_id = -1
+        doc_wordlist = Counter()
+        for line in doc_f:
+            if len(line) > 2 and line[:2] == '.I':
+                doc_id = int(line[3:])
+            elif len(line) > 2 and line[:2] == '.W':
+                continue
+            elif len(line) > 1:
+                words = line.split()
+                for word in words:
+                    doc_wordlist[word] += 1
+            else:
+                docs[doc_id] = doc_wordlist
+                doc_id = -1
+                doc_wordlist = Counter()
+        return docs
+
 
 # Convert to: return 2D array rows = files, cols = terms
 # returns a dictionary {filenames: {(all)terms: counts}}
 def get_document_tf(filenames):
-        documents = {}
-        for i, filename in enumerate(filenames):
-                f = open(filename).read()
-                documents[filename] = coll.Counter(word.lower()
-                                                   for word in f.split())
-        return documents
+    documents = {}
+    for i, filename in enumerate(filenames):
+        f = open(filename).read()
+        documents[filename] = Counter(word.lower() for word in f.split())
+    return documents
+
 
 def calculate_vocab():
-        return range(len(terms_to_cols))
+    return range(len(terms_to_cols))
 
 
 # P and Q must be iterators of the same length
 # sum(P) == sum(Q) == 1
 # no element in either P or Q is 0
 def symetric_KDL(P, Q):
-        summation = 0
-        for p, q in itertools.zip_longest(P, Q):
-                summation += (p-q)*math.log(float(p)/q)
-        return summation
+    summation = 0
+    for p, q in itertools.zip_longest(P, Q):
+        summation += (p - q) * math.log(float(p) / q)
+    return summation
 
-def calculate_conditional(documents):
-        V = calculate_vocab()
-        sum_per_term = coll.Counter()
-        for term in V:
-                for doc in documents:
-                        sum_per_term[term] += doc[term]
-                if sum_per_term[term] == 0:
-                        print(sum_per_term[term])
 
-        P = np.zeros((len(ids_to_rows), len(terms_to_cols)))
-        epsilon = 1
-        number_of_terms_not_in_doc = np.zeros((len(ids_to_rows)))
+def calculate_conditional(items, num_items):
+    V = calculate_vocab()
+    sum_per_term = Counter()
+    for term in V:
+        for item in items:
+            sum_per_term[term] += item[term]
+        if sum_per_term[term] == 0:
+            print(sum_per_term[term])
 
-        for doc in range(len(documents)):
-                number_of_terms_not_in_doc[doc] = len(V)
-                for term, term_count in enumerate(documents[doc]):
-                        if term_count == 0.0:
-                                continue
-                        P[doc][term] = term_count / sum_per_term[term]
-                        epsilon = min(P[doc][term], epsilon)
-                        number_of_terms_not_in_doc[doc] -= 1
+    P = np.zeros((num_items, len(terms_to_cols)))
+    epsilon = 1
+    num_terms_not_in_item = np.zeros(num_items)
 
-        return epsilon/len(V), number_of_terms_not_in_doc, P
+    for item in range(len(items)):
+        num_terms_not_in_item[item] = len(V)
+        for term, term_count in enumerate(items[item]):
+            if term_count == 0.0:
+                continue
+            P[item][term] = term_count / sum_per_term[term]
+            epsilon = min(P[item][term], epsilon)
+            num_terms_not_in_item[item] -= 1
+
+        return epsilon/len(V), num_terms_not_in_item, P
+
 
 # Calculate Probability Distribution for given documents
-def calculate_conditionals_back_off(documents, catagories):
-        epsilon_d, num_not_in_d, P_d = calculate_conditional(documents)
-        epsilon_c, num_not_in_c, P_c = calculate_conditional(catagories)
+def calculate_conditionals_back_off(documents, categories):
+    epsilon_d, num_not_in_d, P_d = calculate_conditional(documents, len(doc_ids_to_rows))
+    epsilon_c, num_not_in_c, P_c = calculate_conditional(categories, len(cats_to_rows))
 
-        epsilon = min(epsilon_c, epsilon_d)
+    epsilon = min(epsilon_c, epsilon_d)
 
-        gamma = [1 - num_not_in_c[i] * epsilon for i,cat in enumerate(catagories)]
-        beta  = [1 - num_not_in_d[i] * epsilon for i,cat in enumerate(catagories)]
+    beta = [1 - num_not_in_d[i] * epsilon for i, doc in enumerate(documents)]
+    gamma = [1 - num_not_in_c[i] * epsilon for i, cat in enumerate(categories)]
 
-        def probablity_term_condOn_doc(term, doc):
-                if documents[doc][term] != 0:
-                        return beta[doc] * P_d[doc][term]
-                else:
-                        return epsilon
+    def probablity_term_condOn_doc(term, doc, doctfs):
+        if P_d[doc][term] != 0:
+            return beta[doc] * P_d[doc][term]
+        else:
+            return epsilon
 
-        def probablity_term_condOn_cat(term, cat):
-                #print(type(term))
-                #print(type(cat))
-                #print(categories)
-                if catagories[cat][term] != 0:
-                        return beta[cat] * P_c[cat][term]
-                else:
-                        return epsilon
+    def probablity_term_condOn_cat(term, cat):
+        #print(type(term))
+        #print(type(cat))
+        #print(categories)
+        if P_c[cat][term] != 0:
+            return beta[cat] * P_c[cat][term]
+        else:
+            return epsilon
 
-        def prob_empty(term, cat):
-                return epsilon
+    def prob_empty():
+        return epsilon
 
-        return probablity_term_condOn_doc, probablity_term_condOn_cat, prob_empty
+    return probablity_term_condOn_doc, probablity_term_condOn_cat, prob_empty
 
-def KDL(cat, doc, p_term_c_doc, p_term_c_cat, vocab):
-        return symetric_KDL([p_term_c_doc(v, doc) for v in vocab],
-                            [p_term_c_cat(v, cat) for v in vocab])
 
-def KDL_star(cat, doc, p_term_c_doc, p_term_c_cat, vocab, prob_empty):
-        # Note that the division causes this function to be asymmetric
-        denom = symetric_KDL([p_term_c_cat(v, cat) for v in vocab],
-                             [prob_empty(v, doc) for v in vocab])
-        return KDL(cat, doc, p_term_c_doc, p_term_c_cat, vocab) / denom
+def KDL(cat, doc, p_term_c_doc, p_term_c_cat, vocab, doctfs):
+    return symetric_KDL([p_term_c_doc(v, doc, doctfs) for v in vocab],
+                        [p_term_c_cat(v, cat) for v in vocab])
+
+
+def KDL_star(cat, doc, p_term_c_doc, p_term_c_cat, vocab, prob_empty, doctfs):
+    # Note that the division causes this function to be asymmetric
+    denom = symetric_KDL([p_term_c_cat(v, cat) for v in vocab],
+                         [prob_empty() for v in vocab], doctfs)
+    if denom == 0:
+        return infty
+    return KDL(cat, doc, p_term_c_doc, p_term_c_cat, vocab, doctfs) / denom
+
 
 #takes dictionary {filenames: {(all)terms: counts}}
-def build_document_vector(documents_tfs):
-        for i, filename in enumerate(documents_tfs.keys()):
-                ids_to_rows[filename] = i
+def build_document_vectors(document_tfs, testing):
+    dids2rows = doc_ids_to_rows
+    rows2dids = rows_to_doc_ids
+    if testing:
+        dids2rows = test_doc_ids_to_rows
+        rows2dids = test_rows_to_doc_ids
 
-        vocab = sum(documents_tfs.values(), coll.Counter())
+    for i, doc_id in enumerate(document_tfs.keys()):
+        dids2rows[doc_id] = i
+        rows2dids[i] = doc_id
 
-        for j, word in enumerate(vocab):
-                terms_to_cols[word] = j
+    vocab = sum(document_tfs.values(), Counter())
 
-        counts = np.zeros((len(ids_to_rows), len(terms_to_cols)))
-        for d in documents_tfs:
-                for t in documents_tfs[d]:
-                        counts[ids_to_rows[d]][terms_to_cols[t]] = documents_tfs[d][t]
-        return counts
+    for j, word in enumerate(vocab):
+        terms_to_cols[word] = j
 
-def main():
-        docs = build_document_vector(get_document_tf(sys.argv[1:]))
-        # TODO: obviously this can't stay this way
-        cats = build_document_vector(get_document_tf(sys.argv[1:]))
-        
-        # Here is a model for how to calculate the similarity:
-        vocab = calculate_vocab()
-        p_term_c_doc, p_term_c_cat, prob_empty = calculate_conditionals_back_off(docs, cats)
+    counts = np.zeros((len(dids2rows), len(terms_to_cols)))
+    for d in document_tfs:
+        for t in document_tfs[d]:
+            counts[dids2rows[d]][terms_to_cols[t]] = document_tfs[d][t]
+    return counts
 
-        # Need id's for categories -- currently the same
-        for d, c in itertools.product(range(len(ids_to_rows)), range(len(ids_to_rows))):
-                # for each document to categorize take the category that minimizes KDL_star
-                print("Document: {}, Category: {}, Similarity: {}".format(d, c, KDL_star(c,d,p_term_c_doc,p_term_c_cat,vocab, prob_empty)))
+
+def build_category_vectors(document_tfs):
+    counts = np.zeros((len(cats_to_rows), len(terms_to_cols)))
+
+    for cat in category_docs.keys():
+        for doc_id in category_docs[cat]:
+            if doc_id not in doc_ids_to_rows.keys():
+                continue
+            for i, termval in enumerate(document_tfs[doc_ids_to_rows[doc_id]]):
+                counts[cats_to_rows[cat]][i] += termval
+    return counts
+
+
+def train():
+    print("===========================================================")
+    print("Beginning training routine")
+    doc_categories_fname = "rcv1/rcv1-v2.topics.qrels"
+    load_categories(doc_categories_fname)
+
+    print("Done reading in categories")
+    print("Read in {} categories and {} document ids"
+          .format(len(category_docs.keys()), len(doc_categories.keys())))
+
+    doc_fnames = ["rcv1/lyrl2004_tokens_train.dat"]
+
+    traindocs = generate_freq_vectors(doc_fnames)
+
+    subdocs = {k: v for k, v in list(traindocs.items())[:][:100]}
+    traindocs = subdocs
+
+    print("Done reading in docs & calculating tf vectors")
+    print("Read in {} document tf vectors".format(len(traindocs)))
+
+    doctfs = build_document_vectors(traindocs, False)
+    print("Done building document tf matrix")
+    print("Building category tf matrix")
+    cattfs = build_category_vectors(doctfs)
+    print("Done building category tf matrix")
+
+    print("Calcualting vocabualry")
+    vocab = calculate_vocab()
+    print("Find probability distribution functions")
+    p_term_c_doc, p_term_c_cat, prob_empty = calculate_conditionals_back_off(doctfs, cattfs)
+
+    print("Ending training routine")
+    print("===========================================================")
+    return KDLData(vocab, p_term_c_doc, p_term_c_cat, prob_empty)
+
+
+def test(kdldata):
+    vocab = kdldata.vocab
+    p_term_c_doc = kdldata.p_term_c_doc
+    p_term_c_cat = kdldata.p_term_c_cat
+    prob_empty = kdldata.prob_empty
+    print("Beginning testing routine")
+    correct = 0
+    total = 0
+    global catweights
+    doc_fnames = ["rcv1/lyrl2004_tokens_test_pt0.dat"]
+#    doc_fnames = ["rcv1/lyrl2004_tokens_train.dat"]
+    testdocs = generate_freq_vectors(doc_fnames)
+    subdocs = {k: v for k, v in list(testdocs.items())[:][:1000]}
+    testdocs = subdocs
+    print("Read in {} document tf vectors".format(len(testdocs)))
+
+    doctfs = build_document_vectors(testdocs, True)
+    print("Done building document tfidf vectors")
+    print("Running categorization test on test corpus")
+
+    # Need id's for categories -- currently the same
+    for doc_idx in range(len(test_doc_ids_to_rows)):
+        minsim = infty
+        mincat = 0
+        for cat_idx in range(len(cats_to_rows)):
+            # for each document to categorize take the category that minimizes KDL_star
+            sim = KDL_star(cat_idx, doc_idx, p_term_c_doc, p_term_c_cat, vocab, prob_empty, doctfs)
+            if (sim < minsim):
+                minsim = sim
+                mincat = cat_idx
+        for cat in category_docs[test_rows_to_doc_ids[doc_idx]]:
+            if cat == rows_to_cats[mincat]:
+                correct += 1
+                break
+        total += 1
+
+    print("% Correct: {}".format(correct / total * 100))
+
 
 if __name__ == '__main__':
-        main()
+        kdldata = train()
+        test(kdldata)

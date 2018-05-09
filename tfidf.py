@@ -17,15 +17,16 @@ def load_categories(doc_categories_fname):
         doc_id = int(line[1])
         doc_category = line[0]
         if doc_id not in doc_categories.keys():
-            doc_categories[doc_id] = [doc_category]
+            doc_categories[doc_id] = set()
+            doc_categories[doc_id].add(doc_category)
         else:
-            doc_categories[doc_id].append(doc_category)
+            doc_categories[doc_id].add(doc_category)
         if doc_category not in category_docs.keys():
-            category_docs[doc_category] = [doc_id]
+            category_docs[doc_category] = set()
+            category_docs[doc_category].add(doc_id)
         else:
-            category_docs[doc_category].append(doc_id)
+            category_docs[doc_category].add(doc_id)
     doc_categories_f.close()
-    return category_docs
 
 
 def generate_freq_vectors(doc_fnames):
@@ -138,7 +139,7 @@ def train():
     print("===========================================================")
     print("Beginning training routine")
     doc_categories_fname = "rcv1/rcv1-v2.topics.qrels"
-    category_docs = load_categories(doc_categories_fname)
+    load_categories(doc_categories_fname)
 
     print("Done reading in categories")
     print("Read in {} categories and {} document ids"
