@@ -3,6 +3,7 @@ import math
 import sys
 import collections as coll
 
+
 # returns a dictionary {filenames: {(all)terms: counts}}
 def get_document_tf(filenames):
         documents = {}
@@ -12,6 +13,7 @@ def get_document_tf(filenames):
                                                    for word in f.split())
         return documents
 
+
 # P and Q must be iterators of the same length
 # sum(P) == sum(Q) == 1
 # no element in either P or Q is 0
@@ -20,6 +22,7 @@ def symetric_KDL(P, Q):
         for p, q in itertools.zip_longest(P, Q):
                 summation += (p-q)*math.log(float(p)/q)
         return summation
+
 
 # Calculate Probability Distribution for given documents
 def calculate_joint_pmf(documents):
@@ -50,7 +53,6 @@ def calculate_joint_pmf(documents):
                         return epsilon
 
         return probablity_term_condOn_doc
-
 
 
 def main():
