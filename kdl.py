@@ -91,7 +91,10 @@ def calculate_vocab():
 def symetric_KDL(P, Q):
     summation = 0
     for p, q in itertools.zip_longest(P, Q):
-        summation += (p - q) * math.log(float(p) / q)
+        try:
+            summation += (p - q) * math.log(float(p) / q)
+        except Exception as e:
+            print("BLAH")
     return summation
 
 
@@ -130,11 +133,29 @@ def calculate_conditionals_back_off(documents, categories):
     beta = [1 - num_not_in_d[i] * epsilon for i, doc in enumerate(documents)]
     gamma = [1 - num_not_in_c[i] * epsilon for i, cat in enumerate(categories)]
 
-    def probablity_term_condOn_doc(term, doc, doctfs):
-        if P_d[doc][term] != 0:
-            return beta[doc] * P_d[doc][term]
+    def probablity_term_condOn_doc(term, doc, doctfs, vocab):
+        tf_vector = doctfs[doc]
+        beta_ = 1.0
+        tf_vector /= sum(tf_vector)
+
+        t_min = 1000
+        for t in tf_vector:
+            if t != 0.0:
+                t_min = t
+        epsilon_ = min(epsilon_c, t_min)
+
+        cnt = 0
+        for v in tf_vector:
+            #print(v)
+            if v == 0:
+                cnt+=1
+        beta_ = 1 - cnt * epsilon_
+        #print("Beta: {}, epsilon: {}".format(beta_, epsilon_))
+
+        if tf_vector[term] != 0:
+            return beta_ * tf_vector[term]
         else:
-            return epsilon
+            return epsilon_
 
     def probablity_term_condOn_cat(term, cat):
         #print(type(term))
@@ -152,14 +173,14 @@ def calculate_conditionals_back_off(documents, categories):
 
 
 def KDL(cat, doc, p_term_c_doc, p_term_c_cat, vocab, doctfs):
-    return symetric_KDL([p_term_c_doc(v, doc, doctfs) for v in vocab],
+    return symetric_KDL([p_term_c_doc(v, doc, doctfs, vocab) for v in vocab],
                         [p_term_c_cat(v, cat) for v in vocab])
 
 
 def KDL_star(cat, doc, p_term_c_doc, p_term_c_cat, vocab, prob_empty, doctfs):
     # Note that the division causes this function to be asymmetric
     denom = symetric_KDL([p_term_c_cat(v, cat) for v in vocab],
-                         [prob_empty() for v in vocab], doctfs)
+                         [prob_empty() for v in vocab])
     if denom == 0:
         return infty
     return KDL(cat, doc, p_term_c_doc, p_term_c_cat, vocab, doctfs) / denom
@@ -215,7 +236,7 @@ def train():
 
     traindocs = generate_freq_vectors(doc_fnames)
 
-    subdocs = {k: v for k, v in list(traindocs.items())[:][:100]}
+    subdocs = {k: v for k, v in list(traindocs.items())[:][:500]}
     traindocs = subdocs
 
     print("Done reading in docs & calculating tf vectors")
@@ -249,7 +270,7 @@ def test(kdldata):
     doc_fnames = ["rcv1/lyrl2004_tokens_test_pt0.dat"]
 #    doc_fnames = ["rcv1/lyrl2004_tokens_train.dat"]
     testdocs = generate_freq_vectors(doc_fnames)
-    subdocs = {k: v for k, v in list(testdocs.items())[:][:1000]}
+    subdocs = {k: v for k, v in list(testdocs.items())[:][:100]}
     testdocs = subdocs
     print("Read in {} document tf vectors".format(len(testdocs)))
 
@@ -267,11 +288,14 @@ def test(kdldata):
             if (sim < minsim):
                 minsim = sim
                 mincat = cat_idx
-        for cat in category_docs[test_rows_to_doc_ids[doc_idx]]:
+        for cat in doc_categories[test_rows_to_doc_ids[doc_idx]]:
+            print(rows_to_cats[mincat])
             if cat == rows_to_cats[mincat]:
                 correct += 1
                 break
         total += 1
+        print(correct/total)
+        print(total/len(test_doc_ids_to_rows))
 
     print("% Correct: {}".format(correct / total * 100))
 
