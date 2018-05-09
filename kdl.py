@@ -52,6 +52,7 @@ def calculate_joint_pmf(documents):
         return probablity_term_condOn_doc
 
 
+
 def main():
         print(calculate_joint_pmf(get_document_tf(sys.argv)))
 
