@@ -3,6 +3,7 @@ import sys
 import collections as coll
 import math
 
+# returns a dictionary {filenames: {(all)terms: counts}}
 def get_document_tf(filenames):
         documents = {}
         for filename in filenames:

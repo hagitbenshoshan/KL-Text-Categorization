@@ -33,3 +33,8 @@ The category vector is: w_{ki} = tf(t_k, c_i) x idf(c_i)
 tf(t_k, c_i)
 ------------
 tf(t_k, c_i) = 
+
+
+
+KDL Classifier
+==============
