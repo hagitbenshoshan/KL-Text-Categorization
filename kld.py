@@ -236,7 +236,7 @@ def train():
 
     traindocs = generate_freq_vectors(doc_fnames)
 
-    subdocs = {k: v for k, v in list(traindocs.items())[:][:100]}
+    subdocs = {k: v for k, v in list(traindocs.items())[:][:5000]}
     traindocs = subdocs
 
     print("Done reading in docs & calculating tf vectors")
@@ -267,10 +267,10 @@ def test(kdldata):
     correct = 0
     total = 0
     global catweights
-    doc_fnames = ["rcv1/lyrl2004_tokens_test_pt0.dat"]
+    doc_fnames = ["rcv1/rcv1/lyrl2004_tokens_train.dat"]
 #    doc_fnames = ["rcv1/lyrl2004_tokens_train.dat"]
     testdocs = generate_freq_vectors(doc_fnames)
-    subdocs = {k: v for k, v in list(testdocs.items())[:][1000:1050]}
+    subdocs = {k: v for k, v in list(testdocs.items())[:][5000:5100]}
     testdocs = subdocs
     print("Read in {} document tf vectors".format(len(testdocs)))
 
@@ -288,7 +288,6 @@ def test(kdldata):
             if (sim < minsim):
                 minsim = sim
                 mincat = cat_idx
-        print(doc_categories[test_rows_to_doc_ids[doc_idx]])
         for cat in doc_categories[test_rows_to_doc_ids[doc_idx]]:
             print(rows_to_cats[mincat])
             if cat == rows_to_cats[mincat]:
